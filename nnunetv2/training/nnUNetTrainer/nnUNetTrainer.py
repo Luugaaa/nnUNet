@@ -11,8 +11,6 @@ from torch import distributed as dist
 from torch.cuda import device_count
 from torch import GradScaler
 
-from nnunetv2.paths import nnUNet_results
-
 from nnunetv2.utilities.get_network_from_plans import get_network_from_plans
 from nnunetv2.utilities.plans_handling.plans_handler import PlansManager
 
@@ -71,10 +69,10 @@ class nnUNetTrainer(object):
         # inference and some of the folders may not be defined!
         # self.preprocessed_dataset_folder_base = join(nnUNet_preprocessed, self.plans_manager.dataset_name) \
         #     if nnUNet_preprocessed is not None else None
-        self.output_folder_base = join(nnUNet_results, self.plans_manager.dataset_name,
-                                       self.__class__.__name__ + '__' + self.plans_manager.plans_name + "__" + configuration) \
-            if nnUNet_results is not None else None
-        self.output_folder = join(self.output_folder_base, f'fold_{fold}')
+        # self.output_folder_base = join(nnUNet_results, self.plans_manager.dataset_name,
+        #                                self.__class__.__name__ + '__' + self.plans_manager.plans_name + "__" + configuration) \
+        #     if nnUNet_results is not None else None
+        # self.output_folder = join(self.output_folder_base, f'fold_{fold}')
 
         # self.preprocessed_dataset_folder = join(self.preprocessed_dataset_folder_base,
         #                                         self.configuration_manager.data_identifier)
@@ -116,10 +114,10 @@ class nnUNetTrainer(object):
         # initialize log file. This is just our log for the print statements etc. Not to be confused with lightning
         # logging
         timestamp = datetime.now()
-        maybe_mkdir_p(self.output_folder)
-        self.log_file = join(self.output_folder, "training_log_%d_%d_%d_%02.0d_%02.0d_%02.0d.txt" %
-                             (timestamp.year, timestamp.month, timestamp.day, timestamp.hour, timestamp.minute,
-                              timestamp.second))
+        # maybe_mkdir_p(self.output_folder)
+        # self.log_file = join(self.output_folder, "training_log_%d_%d_%d_%02.0d_%02.0d_%02.0d.txt" %
+        #                      (timestamp.year, timestamp.month, timestamp.day, timestamp.hour, timestamp.minute,
+        #                       timestamp.second))
         # self.logger = nnUNetLogger()
 
         ### placeholders

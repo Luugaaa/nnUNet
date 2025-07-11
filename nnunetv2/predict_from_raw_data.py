@@ -32,7 +32,8 @@ from nnunetv2.utilities.plans_handling.plans_handler import PlansManager
 from nnunetv2.utilities.utils import create_lists_from_splitted_dataset_folder
 
 from nnunetv2.training.nnUNetTrainer.nnUNetTrainer import nnUNetTrainer
-from nnunetv2.preprocessing.preprocessors.default_preprocessor import DefaultPreprocessor
+
+from nnunetv2.customizable_parts.preprocessor_classes import preprocessor_classes
 
 class nnUNetPredictor(object):
     def __init__(self,
@@ -601,21 +602,22 @@ class nnUNetPredictor(object):
         # label_manager = self.plans_manager.get_label_manager(self.dataset_json)
         # preprocessor = self.configuration_manager.preprocessor_class(verbose=self.verbose)
         # preprocessor = DefaultPreprocessor
-        preprocessor_classes = {
-            "DefaultPreprocessor": DefaultPreprocessor()
-        }
+        # preprocessor_classes = {
+        #     "DefaultPreprocessor": DefaultPreprocessor()
+        # }
 
         preprocessor_name = self.configuration_manager.preprocessor_name
 
         if preprocessor_name in preprocessor_classes:
-            preprocessor = preprocessor_classes[preprocessor_name]
+            preprocessor_class = preprocessor_classes[preprocessor_name]
         else:
             raise NotImplementedError(
                 f"The preprocessor '{preprocessor_name}' could not be found. "
                 f"You are either using a customized preprocessor or one that was not "
                 f"implemented in nnU-Net when this inference code was produced."
             )
-
+        preprocessor = preprocessor_class()
+        
         if output_filename_truncated is None:
             output_filename_truncated = [None] * len(list_of_lists_or_source_folder)
         if seg_from_prev_stage_files is None:

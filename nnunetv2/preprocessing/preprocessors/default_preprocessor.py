@@ -23,7 +23,8 @@ from nnunetv2.preprocessing.cropping.cropping import crop_to_nonzero
 from nnunetv2.preprocessing.resampling.default_resampling import compute_new_shape
 from nnunetv2.utilities.plans_handling.plans_handler import PlansManager, ConfigurationManager
 
-from nnunetv2.preprocessing.normalization.default_normalization_schemes import ZScoreNormalization, CTNormalization, NoNormalization, RescaleTo01Normalization, RGBTo01Normalization
+from nnunetv2.customizable_parts.general_processing import normalizer_classes
+
 
 class DefaultPreprocessor(object):
     def __init__(self, verbose: bool = True):
@@ -206,13 +207,13 @@ class DefaultPreprocessor(object):
             #     raise RuntimeError(f'Unable to locate class \'{scheme}\' for normalization')
             # normalizer_class = ZScoreNormalization
             
-            normalizer_classes = {
-                "ZScoreNormalization": ZScoreNormalization,
-                "CTNormalization": CTNormalization,
-                "NoNormalization": NoNormalization,
-                "RescaleTo01Normalization": RescaleTo01Normalization,
-                "RGBTo01Normalization": RGBTo01Normalization,
-            }
+            # normalizer_classes = {
+            #     "ZScoreNormalization": ZScoreNormalization,
+            #     "CTNormalization": CTNormalization,
+            #     "NoNormalization": NoNormalization,
+            #     "RescaleTo01Normalization": RescaleTo01Normalization,
+            #     "RGBTo01Normalization": RGBTo01Normalization,
+            # }
 
             normalizer_name = configuration_manager.normalization_schemes[c]
 

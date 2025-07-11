@@ -16,11 +16,8 @@ from typing import TYPE_CHECKING
 from dynamic_network_architectures.building_blocks.helper import convert_dim_to_conv_op, get_matching_instancenorm
 
 from nnunetv2.utilities.label_handling.label_handling import LabelManager
-from nnunetv2.preprocessing.resampling.default_resampling import resample_data_or_seg_to_shape, resample_data_or_seg_to_spacing, resample_data_or_seg
 
-from nnunetv2.imageio.nibabel_reader_writer import NibabelIOWithReorient, NibabelIO
-from nnunetv2.imageio.simpleitk_reader_writer import SimpleITKIO
-from nnunetv2.imageio.tif_reader_writer import Tiff3DIO
+from nnunetv2.customizable_parts.general_processing import resampling_fn_list, image_io_classes
 
 class ConfigurationManager(object):
     def __init__(self, configuration_dict: dict):
@@ -274,17 +271,17 @@ class PlansManager(object):
     #     return recursive_find_reader_writer_by_name(self.plans['image_reader_writer'])
 
     def image_reader_writer_class(self):
-        image_io_classes = {
-            "NibabelIOWithReorient": NibabelIOWithReorient(),
-            "NibabelIO": NibabelIO(),
-            "SimpleITKIO": SimpleITKIO(),
-            "Tiff3DIO": Tiff3DIO()
-        }
+        # image_io_classes = {
+        #     "NibabelIOWithReorient": NibabelIOWithReorient(),
+        #     "NibabelIO": NibabelIO(),
+        #     "SimpleITKIO": SimpleITKIO(),
+        #     "Tiff3DIO": Tiff3DIO()
+        # }
 
         reader_writer_name = self.plans.get('image_reader_writer')
 
         if reader_writer_name in image_io_classes:
-            return image_io_classes[reader_writer_name]
+            return image_io_classes[reader_writer_name]()
         else:
             raise NotImplementedError(
                 f"The image reader '{reader_writer_name}' could not be found. "
@@ -331,11 +328,11 @@ def get_resampling_fn(resampling_fn_name):
     """
     Looks up and returns the correct image reader/writer class object based on the plans.
     """
-    resampling_fn_list = {
-        "resample_data_or_seg_to_shape": resample_data_or_seg_to_shape,
-        "resample_data_or_seg_to_spacing": resample_data_or_seg_to_spacing,
-        "resample_data_or_seg": resample_data_or_seg,
-    }
+    # resampling_fn_list = {
+    #     "resample_data_or_seg_to_shape": resample_data_or_seg_to_shape,
+    #     "resample_data_or_seg_to_spacing": resample_data_or_seg_to_spacing,
+    #     "resample_data_or_seg": resample_data_or_seg,
+    # }
 
     if resampling_fn_name in resampling_fn_list:
         return resampling_fn_list[resampling_fn_name]
