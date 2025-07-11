@@ -12,28 +12,18 @@
 #    See the License for the specific language governing permissions and
 #    limitations under the License.
 import math
-import multiprocessing
-import shutil
-from time import sleep
 from typing import Tuple
 
-import SimpleITK
 import numpy as np
 import pandas as pd
 from batchgenerators.utilities.file_and_folder_operations import *
-from tqdm import tqdm
 from typing import Union
 
-import nnunetv2
-from nnunetv2.paths import nnUNet_preprocessed, nnUNet_raw
 from nnunetv2.preprocessing.cropping.cropping import crop_to_nonzero
 from nnunetv2.preprocessing.resampling.default_resampling import compute_new_shape
-from nnunetv2.training.dataloading.nnunet_dataset import nnUNetDatasetBlosc2
-from nnunetv2.utilities.dataset_name_id_conversion import maybe_convert_to_dataset_name
-from nnunetv2.utilities.find_class_by_name import recursive_find_python_class
 from nnunetv2.utilities.plans_handling.plans_handler import PlansManager, ConfigurationManager
-from nnunetv2.utilities.utils import get_filenames_of_train_images_and_targets
 
+from nnunetv2.preprocessing.normalization.default_normalization_schemes import ZScoreNormalization, CTNormalization, NoNormalization, RescaleTo01Normalization, RGBTo01Normalization
 
 class DefaultPreprocessor(object):
     def __init__(self, verbose: bool = True):
@@ -131,7 +121,7 @@ class DefaultPreprocessor(object):
             dataset_json = load_json(dataset_json)
 
         rw = plans_manager.image_reader_writer_class()
-
+        # rw = NibabelIOWithReorient()
         # load image(s)
         data, data_properties = rw.read_images(image_files)
 
@@ -146,26 +136,6 @@ class DefaultPreprocessor(object):
         data, seg, data_properties = self.run_case_npy(data, seg, data_properties, plans_manager, configuration_manager,
                                       dataset_json)
         return data, seg, data_properties
-
-    def run_case_save(self, output_filename_truncated: str, image_files: List[str], seg_file: str,
-                      plans_manager: PlansManager, configuration_manager: ConfigurationManager,
-                      dataset_json: Union[dict, str]):
-        data, seg, properties = self.run_case(image_files, seg_file, plans_manager, configuration_manager, dataset_json)
-        data = data.astype(np.float32, copy=False)
-        seg = seg.astype(np.int16, copy=False)
-        # print('dtypes', data.dtype, seg.dtype)
-        block_size_data, chunk_size_data = nnUNetDatasetBlosc2.comp_blosc2_params(
-            data.shape,
-            tuple(configuration_manager.patch_size),
-            data.itemsize)
-        block_size_seg, chunk_size_seg = nnUNetDatasetBlosc2.comp_blosc2_params(
-            seg.shape,
-            tuple(configuration_manager.patch_size),
-            seg.itemsize)
-
-        nnUNetDatasetBlosc2.save_case(data, seg, properties, output_filename_truncated,
-                                      chunks=chunk_size_data, blocks=block_size_data,
-                                      chunks_seg=chunk_size_seg, blocks_seg=block_size_seg)
 
     @staticmethod
     def _sample_foreground_locations(seg: np.ndarray, classes_or_regions: Union[List[int], List[Tuple[int, ...]]],
@@ -228,85 +198,36 @@ class DefaultPreprocessor(object):
     def _normalize(self, data: np.ndarray, seg: np.ndarray, configuration_manager: ConfigurationManager,
                    foreground_intensity_properties_per_channel: dict) -> np.ndarray:
         for c in range(data.shape[0]):
-            scheme = configuration_manager.normalization_schemes[c]
-            normalizer_class = recursive_find_python_class(join(nnunetv2.__path__[0], "preprocessing", "normalization"),
-                                                           scheme,
-                                                           'nnunetv2.preprocessing.normalization')
-            if normalizer_class is None:
-                raise RuntimeError(f'Unable to locate class \'{scheme}\' for normalization')
+            # scheme = configuration_manager.normalization_schemes[c]
+            # normalizer_class = recursive_find_python_class(join(nnunetv2.__path__[0], "preprocessing", "normalization"),
+            #                                                scheme,
+            #                                                'nnunetv2.preprocessing.normalization')
+            # if normalizer_class is None:
+            #     raise RuntimeError(f'Unable to locate class \'{scheme}\' for normalization')
+            # normalizer_class = ZScoreNormalization
+            
+            normalizer_classes = {
+                "ZScoreNormalization": ZScoreNormalization,
+                "CTNormalization": CTNormalization,
+                "NoNormalization": NoNormalization,
+                "RescaleTo01Normalization": RescaleTo01Normalization,
+                "RGBTo01Normalization": RGBTo01Normalization,
+            }
+
+            normalizer_name = configuration_manager.normalization_schemes[c]
+
+            if normalizer_name in normalizer_classes:
+                normalizer_class = normalizer_classes[normalizer_name]
+            else:
+                raise NotImplementedError(
+                    f"The Normalizer '{normalizer_name}' could not be found. "
+                    f"You are either using a customized Normalizer or one that was not "
+                    f"implemented in nnU-Net when this inference code was produced."
+                )
             normalizer = normalizer_class(use_mask_for_norm=configuration_manager.use_mask_for_norm[c],
                                           intensityproperties=foreground_intensity_properties_per_channel[str(c)])
             data[c] = normalizer.run(data[c], seg[0])
         return data
-
-    def run(self, dataset_name_or_id: Union[int, str], configuration_name: str, plans_identifier: str,
-            num_processes: int):
-        """
-        data identifier = configuration name in plans. EZ.
-        """
-        dataset_name = maybe_convert_to_dataset_name(dataset_name_or_id)
-
-        assert isdir(join(nnUNet_raw, dataset_name)), "The requested dataset could not be found in nnUNet_raw"
-
-        plans_file = join(nnUNet_preprocessed, dataset_name, plans_identifier + '.json')
-        assert isfile(plans_file), "Expected plans file (%s) not found. Run corresponding nnUNet_plan_experiment " \
-                                   "first." % plans_file
-        plans = load_json(plans_file)
-        plans_manager = PlansManager(plans)
-        configuration_manager = plans_manager.get_configuration(configuration_name)
-
-        if self.verbose:
-            print(f'Preprocessing the following configuration: {configuration_name}')
-        if self.verbose:
-            print(configuration_manager)
-
-        dataset_json_file = join(nnUNet_preprocessed, dataset_name, 'dataset.json')
-        dataset_json = load_json(dataset_json_file)
-
-        output_directory = join(nnUNet_preprocessed, dataset_name, configuration_manager.data_identifier)
-
-        if isdir(output_directory):
-            shutil.rmtree(output_directory)
-
-        maybe_mkdir_p(output_directory)
-
-        dataset = get_filenames_of_train_images_and_targets(join(nnUNet_raw, dataset_name), dataset_json)
-
-        # identifiers = [os.path.basename(i[:-len(dataset_json['file_ending'])]) for i in seg_fnames]
-        # output_filenames_truncated = [join(output_directory, i) for i in identifiers]
-
-        # multiprocessing magic.
-        r = []
-        with multiprocessing.get_context("spawn").Pool(num_processes) as p:
-            remaining = list(range(len(dataset)))
-            # p is pretty nifti. If we kill workers they just respawn but don't do any work.
-            # So we need to store the original pool of workers.
-            workers = [j for j in p._pool]
-            for k in dataset.keys():
-                r.append(p.starmap_async(self.run_case_save,
-                                         ((join(output_directory, k), dataset[k]['images'], dataset[k]['label'],
-                                           plans_manager, configuration_manager,
-                                           dataset_json),)))
-
-            with tqdm(desc=None, total=len(dataset), disable=self.verbose) as pbar:
-                while len(remaining) > 0:
-                    all_alive = all([j.is_alive() for j in workers])
-                    if not all_alive:
-                        raise RuntimeError('Some background worker is 6 feet under. Yuck. \n'
-                                           'OK jokes aside.\n'
-                                           'One of your background processes is missing. This could be because of '
-                                           'an error (look for an error message) or because it was killed '
-                                           'by your OS due to running out of RAM. If you don\'t see '
-                                           'an error message, out of RAM is likely the problem. In that case '
-                                           'reducing the number of workers might help')
-                    done = [i for i in remaining if r[i].ready()]
-                    # get done so that errors can be raised
-                    _ = [r[i].get() for i in done]
-                    for _ in done:
-                        r[_].get()  # allows triggering errors
-                        pbar.update()
-                    remaining = [i for i in remaining if i not in done]
-                    sleep(0.1)
 
     def modify_seg_fn(self, seg: np.ndarray, plans_manager: PlansManager, dataset_json: dict,
                       configuration_manager: ConfigurationManager) -> np.ndarray:
@@ -316,35 +237,35 @@ class DefaultPreprocessor(object):
         return seg
 
 
-def example_test_case_preprocessing():
-    # (paths to files may need adaptations)
-    plans_file = '/home/isensee/drives/gpu_data/nnUNet_preprocessed/Dataset219_AMOS2022_postChallenge_task2/nnUNetPlans.json'
-    dataset_json_file = '/home/isensee/drives/gpu_data/nnUNet_preprocessed/Dataset219_AMOS2022_postChallenge_task2/dataset.json'
-    input_images = ['/home/isensee/drives/e132-rohdaten/nnUNetv2/Dataset219_AMOS2022_postChallenge_task2/imagesTr/amos_0600_0000.nii.gz', ]  # if you only have one channel, you still need a list: ['case000_0000.nii.gz']
+# def example_test_case_preprocessing():
+#     # (paths to files may need adaptations)
+#     plans_file = '/home/isensee/drives/gpu_data/nnUNet_preprocessed/Dataset219_AMOS2022_postChallenge_task2/nnUNetPlans.json'
+#     dataset_json_file = '/home/isensee/drives/gpu_data/nnUNet_preprocessed/Dataset219_AMOS2022_postChallenge_task2/dataset.json'
+#     input_images = ['/home/isensee/drives/e132-rohdaten/nnUNetv2/Dataset219_AMOS2022_postChallenge_task2/imagesTr/amos_0600_0000.nii.gz', ]  # if you only have one channel, you still need a list: ['case000_0000.nii.gz']
 
-    configuration = '3d_fullres'
-    pp = DefaultPreprocessor()
+#     configuration = '3d_fullres'
+#     pp = DefaultPreprocessor()
 
-    # _ because this position would be the segmentation if seg_file was not None (training case)
-    # even if you have the segmentation, don't put the file there! You should always evaluate in the original
-    # resolution. What comes out of the preprocessor might have been resampled to some other image resolution (as
-    # specified by plans)
-    plans_manager = PlansManager(plans_file)
-    data, _, properties = pp.run_case(input_images, seg_file=None, plans_manager=plans_manager,
-                                      configuration_manager=plans_manager.get_configuration(configuration),
-                                      dataset_json=dataset_json_file)
+#     # _ because this position would be the segmentation if seg_file was not None (training case)
+#     # even if you have the segmentation, don't put the file there! You should always evaluate in the original
+#     # resolution. What comes out of the preprocessor might have been resampled to some other image resolution (as
+#     # specified by plans)
+#     plans_manager = PlansManager(plans_file)
+#     data, _, properties = pp.run_case(input_images, seg_file=None, plans_manager=plans_manager,
+#                                       configuration_manager=plans_manager.get_configuration(configuration),
+#                                       dataset_json=dataset_json_file)
 
-    # voila. Now plug data into your prediction function of choice. We of course recommend nnU-Net's default (TODO)
-    return data
+#     # voila. Now plug data into your prediction function of choice. We of course recommend nnU-Net's default (TODO)
+#     return data
 
 
-if __name__ == '__main__':
-    # example_test_case_preprocessing()
-    # pp = DefaultPreprocessor()
-    # pp.run(2, '2d', 'nnUNetPlans', 8)
+# if __name__ == '__main__':
+#     # example_test_case_preprocessing()
+#     # pp = DefaultPreprocessor()
+#     # pp.run(2, '2d', 'nnUNetPlans', 8)
 
-    ###########################################################################################################
-    # how to process a test cases? This is an example:
-    # example_test_case_preprocessing()
-    seg = SimpleITK.GetArrayFromImage(SimpleITK.ReadImage('/home/isensee/temp/H-mito-val-v2.nii.gz'))[None]
-    DefaultPreprocessor._sample_foreground_locations(seg, np.arange(1, np.max(seg) + 1))
+#     ###########################################################################################################
+#     # how to process a test cases? This is an example:
+#     # example_test_case_preprocessing()
+#     seg = SimpleITK.GetArrayFromImage(SimpleITK.ReadImage('/home/isensee/temp/H-mito-val-v2.nii.gz'))[None]
+#     DefaultPreprocessor._sample_foreground_locations(seg, np.arange(1, np.max(seg) + 1))

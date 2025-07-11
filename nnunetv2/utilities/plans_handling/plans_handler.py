@@ -9,24 +9,18 @@ from typing import Union, Tuple, List, Type, Callable
 import numpy as np
 import torch
 
-from nnunetv2.preprocessing.resampling.utils import recursive_find_resampling_fn_by_name
-import nnunetv2
 from batchgenerators.utilities.file_and_folder_operations import load_json, join
-
-from nnunetv2.imageio.reader_writer_registry import recursive_find_reader_writer_by_name
-from nnunetv2.utilities.find_class_by_name import recursive_find_python_class
-from nnunetv2.utilities.label_handling.label_handling import get_labelmanager_class_from_plans
 
 # see https://adamj.eu/tech/2021/05/13/python-type-hints-how-to-fix-circular-imports/
 from typing import TYPE_CHECKING
 from dynamic_network_architectures.building_blocks.helper import convert_dim_to_conv_op, get_matching_instancenorm
 
-if TYPE_CHECKING:
-    from nnunetv2.utilities.label_handling.label_handling import LabelManager
-    from nnunetv2.imageio.base_reader_writer import BaseReaderWriter
-    from nnunetv2.preprocessing.preprocessors.default_preprocessor import DefaultPreprocessor
-    from nnunetv2.experiment_planning.experiment_planners.default_experiment_planner import ExperimentPlanner
+from nnunetv2.utilities.label_handling.label_handling import LabelManager
+from nnunetv2.preprocessing.resampling.default_resampling import resample_data_or_seg_to_shape, resample_data_or_seg_to_spacing, resample_data_or_seg
 
+from nnunetv2.imageio.nibabel_reader_writer import NibabelIOWithReorient, NibabelIO
+from nnunetv2.imageio.simpleitk_reader_writer import SimpleITKIO
+from nnunetv2.imageio.tif_reader_writer import Tiff3DIO
 
 class ConfigurationManager(object):
     def __init__(self, configuration_dict: dict):
@@ -108,14 +102,6 @@ class ConfigurationManager(object):
         return self.configuration['preprocessor_name']
 
     @property
-    @lru_cache(maxsize=1)
-    def preprocessor_class(self) -> Type[DefaultPreprocessor]:
-        preprocessor_class = recursive_find_python_class(join(nnunetv2.__path__[0], "preprocessing"),
-                                                         self.preprocessor_name,
-                                                         current_module="nnunetv2.preprocessing")
-        return preprocessor_class
-
-    @property
     def batch_size(self) -> int:
         return self.configuration['batch_size']
 
@@ -155,6 +141,8 @@ class ConfigurationManager(object):
     def pool_op_kernel_sizes(self) -> Tuple[Tuple[int, ...], ...]:
         return self.configuration['architecture']['arch_kwargs']['strides']
 
+
+            
     @property
     @lru_cache(maxsize=1)
     def resampling_fn_data(self) -> Callable[
@@ -164,7 +152,8 @@ class ConfigurationManager(object):
          Union[Tuple[float, ...], List[float], np.ndarray]
          ],
         Union[torch.Tensor, np.ndarray]]:
-        fn = recursive_find_resampling_fn_by_name(self.configuration['resampling_fn_data'])
+        # fn = recursive_find_resampling_fn_by_name(self.configuration['resampling_fn_data'])
+        fn = get_resampling_fn(self.configuration['resampling_fn_data'])
         fn = partial(fn, **self.configuration['resampling_fn_data_kwargs'])
         return fn
 
@@ -177,7 +166,8 @@ class ConfigurationManager(object):
          Union[Tuple[float, ...], List[float], np.ndarray]
          ],
         Union[torch.Tensor, np.ndarray]]:
-        fn = recursive_find_resampling_fn_by_name(self.configuration['resampling_fn_probabilities'])
+        # fn = recursive_find_resampling_fn_by_name(self.configuration['resampling_fn_probabilities'])
+        fn = get_resampling_fn(self.configuration['resampling_fn_data'])
         fn = partial(fn, **self.configuration['resampling_fn_probabilities_kwargs'])
         return fn
 
@@ -190,7 +180,8 @@ class ConfigurationManager(object):
          Union[Tuple[float, ...], List[float], np.ndarray]
          ],
         Union[torch.Tensor, np.ndarray]]:
-        fn = recursive_find_resampling_fn_by_name(self.configuration['resampling_fn_seg'])
+        # fn = recursive_find_resampling_fn_by_name(self.configuration['resampling_fn_seg'])
+        fn = get_resampling_fn(self.configuration['resampling_fn_data'])
         fn = partial(fn, **self.configuration['resampling_fn_seg_kwargs'])
         return fn
 
@@ -277,11 +268,29 @@ class PlansManager(object):
     def original_median_shape_after_transp(self) -> List[float]:
         return self.plans['original_median_shape_after_transp']
 
-    @property
-    @lru_cache(maxsize=1)
-    def image_reader_writer_class(self) -> Type[BaseReaderWriter]:
-        return recursive_find_reader_writer_by_name(self.plans['image_reader_writer'])
+    # @property
+    # @lru_cache(maxsize=1)
+    # def image_reader_writer_class(self) -> Type[BaseReaderWriter]:
+    #     return recursive_find_reader_writer_by_name(self.plans['image_reader_writer'])
 
+    def image_reader_writer_class(self):
+        image_io_classes = {
+            "NibabelIOWithReorient": NibabelIOWithReorient(),
+            "NibabelIO": NibabelIO(),
+            "SimpleITKIO": SimpleITKIO(),
+            "Tiff3DIO": Tiff3DIO()
+        }
+
+        reader_writer_name = self.plans.get('image_reader_writer')
+
+        if reader_writer_name in image_io_classes:
+            return image_io_classes[reader_writer_name]
+        else:
+            raise NotImplementedError(
+                f"The image reader '{reader_writer_name}' could not be found. "
+                f"You are either using a customized image reader or one that was not "
+                f"implemented in nnUnet when this inference code was produced."
+            )
     @property
     def transpose_forward(self) -> List[int]:
         return self.plans['transpose_forward']
@@ -295,27 +304,20 @@ class PlansManager(object):
         return list(self.plans['configurations'].keys())
 
     @property
-    @lru_cache(maxsize=1)
-    def experiment_planner_class(self) -> Type[ExperimentPlanner]:
-        planner_name = self.experiment_planner_name
-        experiment_planner = recursive_find_python_class(join(nnunetv2.__path__[0], "experiment_planning"),
-                                                         planner_name,
-                                                         current_module="nnunetv2.experiment_planning")
-        return experiment_planner
-
-    @property
     def experiment_planner_name(self) -> str:
         return self.plans['experiment_planner_used']
 
     @property
     @lru_cache(maxsize=1)
     def label_manager_class(self) -> Type[LabelManager]:
-        return get_labelmanager_class_from_plans(self.plans)
-
+        # return get_labelmanager_class_from_plans(self.plans)
+        return LabelManager
+    
     def get_label_manager(self, dataset_json: dict, **kwargs) -> LabelManager:
         return self.label_manager_class(label_dict=dataset_json['labels'],
                                         regions_class_order=dataset_json.get('regions_class_order'),
                                         **kwargs)
+        
 
     @property
     def foreground_intensity_properties_per_channel(self) -> dict:
@@ -325,17 +327,36 @@ class PlansManager(object):
         return self.plans['foreground_intensity_properties_per_channel']
 
 
-if __name__ == '__main__':
-    from nnunetv2.paths import nnUNet_preprocessed
-    from nnunetv2.utilities.dataset_name_id_conversion import maybe_convert_to_dataset_name
-
-    plans = load_json(join(nnUNet_preprocessed, maybe_convert_to_dataset_name(3), 'nnUNetPlans.json'))
-    # build new configuration that inherits from 3d_fullres
-    plans['configurations']['3d_fullres_bs4'] = {
-        'batch_size': 4,
-        'inherits_from': '3d_fullres'
+def get_resampling_fn(resampling_fn_name):
+    """
+    Looks up and returns the correct image reader/writer class object based on the plans.
+    """
+    resampling_fn_list = {
+        "resample_data_or_seg_to_shape": resample_data_or_seg_to_shape,
+        "resample_data_or_seg_to_spacing": resample_data_or_seg_to_spacing,
+        "resample_data_or_seg": resample_data_or_seg,
     }
-    # now get plans and configuration managers
-    plans_manager = PlansManager(plans)
-    configuration_manager = plans_manager.get_configuration('3d_fullres_bs4')
-    print(configuration_manager)  # look for batch size 4
+
+    if resampling_fn_name in resampling_fn_list:
+        return resampling_fn_list[resampling_fn_name]
+    else:
+        raise NotImplementedError(
+            f"The resampling function '{resampling_fn_name}' could not be found. "
+            f"You are either using a customized resampling function or one that was not "
+            f"implemented in nnU-Net when this inference code was produced."
+        )
+        
+# if __name__ == '__main__':
+#     from paths import nnUNet_preprocessed
+#     from dataset_name_id_conversion import maybe_convert_to_dataset_name
+
+#     plans = load_json(join(nnUNet_preprocessed, maybe_convert_to_dataset_name(3), 'nnUNetPlans.json'))
+#     # build new configuration that inherits from 3d_fullres
+#     plans['configurations']['3d_fullres_bs4'] = {
+#         'batch_size': 4,
+#         'inherits_from': '3d_fullres'
+#     }
+#     # now get plans and configuration managers
+#     plans_manager = PlansManager(plans)
+#     configuration_manager = plans_manager.get_configuration('3d_fullres_bs4')
+#     print(configuration_manager)  # look for batch size 4

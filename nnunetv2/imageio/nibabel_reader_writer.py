@@ -20,7 +20,7 @@ from nibabel.orientations import io_orientation, axcodes2ornt, ornt_transform
 from nnunetv2.imageio.base_reader_writer import BaseReaderWriter
 import nibabel
 
-from nnunetv2.imageio.simpleitk_reader_writer import SimpleITKIO
+# from nnunetv2.imageio.simpleitk_reader_writer import SimpleITKIO
 
 
 class NibabelIO(BaseReaderWriter):
@@ -190,34 +190,34 @@ class NibabelIOWithReorient(BaseReaderWriter):
         nibabel.save(seg_nib_reoriented, output_fname)
 
 
-if __name__ == '__main__':
-    img_file = '/media/isensee/raw_data/nnUNet_raw/Dataset220_KiTS2023/imagesTr/case_00004_0000.nii.gz'
-    seg_file = '/media/isensee/raw_data/nnUNet_raw/Dataset220_KiTS2023/labelsTr/case_00004.nii.gz'
+# if __name__ == '__main__':
+#     img_file = '/media/isensee/raw_data/nnUNet_raw/Dataset220_KiTS2023/imagesTr/case_00004_0000.nii.gz'
+#     seg_file = '/media/isensee/raw_data/nnUNet_raw/Dataset220_KiTS2023/labelsTr/case_00004.nii.gz'
 
-    nibio = NibabelIO()
-    # images, dct = nibio.read_images([img_file])
-    seg, dctseg = nibio.read_seg(seg_file)
+#     nibio = NibabelIO()
+#     # images, dct = nibio.read_images([img_file])
+#     seg, dctseg = nibio.read_seg(seg_file)
 
-    nibio_r = NibabelIOWithReorient()
-    # images_r, dct_r = nibio_r.read_images([img_file])
-    seg_r, dctseg_r = nibio_r.read_seg(seg_file)
+#     nibio_r = NibabelIOWithReorient()
+#     # images_r, dct_r = nibio_r.read_images([img_file])
+#     seg_r, dctseg_r = nibio_r.read_seg(seg_file)
 
-    sitkio = SimpleITKIO()
-    # images_sitk, dct_sitk = sitkio.read_images([img_file])
-    seg_sitk, dctseg_sitk = sitkio.read_seg(seg_file)
+#     sitkio = SimpleITKIO()
+#     # images_sitk, dct_sitk = sitkio.read_images([img_file])
+#     seg_sitk, dctseg_sitk = sitkio.read_seg(seg_file)
 
-    # write reoriented and original segmentation
-    nibio.write_seg(seg[0], '/home/isensee/seg_nibio.nii.gz', dctseg)
-    nibio_r.write_seg(seg_r[0], '/home/isensee/seg_nibio_r.nii.gz', dctseg_r)
-    sitkio.write_seg(seg_sitk[0], '/home/isensee/seg_nibio_sitk.nii.gz', dctseg_sitk)
+#     # write reoriented and original segmentation
+#     nibio.write_seg(seg[0], '/home/isensee/seg_nibio.nii.gz', dctseg)
+#     nibio_r.write_seg(seg_r[0], '/home/isensee/seg_nibio_r.nii.gz', dctseg_r)
+#     sitkio.write_seg(seg_sitk[0], '/home/isensee/seg_nibio_sitk.nii.gz', dctseg_sitk)
 
-    # now load all with sitk to make sure no shaped got f'd up
-    a, d1 = sitkio.read_seg('/home/isensee/seg_nibio.nii.gz')
-    b, d2 = sitkio.read_seg('/home/isensee/seg_nibio_r.nii.gz')
-    c, d3 = sitkio.read_seg('/home/isensee/seg_nibio_sitk.nii.gz')
+#     # now load all with sitk to make sure no shaped got f'd up
+#     a, d1 = sitkio.read_seg('/home/isensee/seg_nibio.nii.gz')
+#     b, d2 = sitkio.read_seg('/home/isensee/seg_nibio_r.nii.gz')
+#     c, d3 = sitkio.read_seg('/home/isensee/seg_nibio_sitk.nii.gz')
 
-    assert a.shape == b.shape
-    assert b.shape == c.shape
+#     assert a.shape == b.shape
+#     assert b.shape == c.shape
 
-    assert np.all(a == b)
-    assert np.all(b == c)
+#     assert np.all(a == b)
+#     assert np.all(b == c)

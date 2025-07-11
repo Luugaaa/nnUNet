@@ -4,11 +4,8 @@ from typing import Union, List, Tuple, Type
 
 import numpy as np
 import torch
-from acvl_utils.cropping_and_padding.bounding_boxes import bounding_box_to_slice, insert_crop_into_image
-from batchgenerators.utilities.file_and_folder_operations import join
+from acvl_utils.cropping_and_padding.bounding_boxes import insert_crop_into_image
 
-import nnunetv2
-from nnunetv2.utilities.find_class_by_name import recursive_find_python_class
 from nnunetv2.utilities.helpers import softmax_helper_dim0
 
 from typing import TYPE_CHECKING
@@ -244,18 +241,6 @@ class LabelManager(object):
         else:
             return len(self.all_labels)
 
-
-def get_labelmanager_class_from_plans(plans: dict) -> Type[LabelManager]:
-    if 'label_manager' not in plans.keys():
-        print('No label manager specified in plans. Using default: LabelManager')
-        return LabelManager
-    else:
-        labelmanager_class = recursive_find_python_class(join(nnunetv2.__path__[0], "utilities", "label_handling"),
-                                                         plans['label_manager'],
-                                                         current_module="nnunetv2.utilities.label_handling")
-        return labelmanager_class
-
-
 def convert_labelmap_to_one_hot(segmentation: Union[np.ndarray, torch.Tensor],
                                 all_labels: Union[List, torch.Tensor, np.ndarray, tuple],
                                 output_dtype=None) -> Union[np.ndarray, torch.Tensor]:
@@ -311,23 +296,23 @@ def determine_num_input_channels(plans_manager: PlansManager,
     return num_input_channels
 
 
-if __name__ == '__main__':
-    # this code used to be able to differentiate variant 1 and 2 to measure time.
-    num_labels = 7
-    seg = np.random.randint(0, num_labels, size=(256, 256, 256), dtype=np.uint8)
-    seg_torch = torch.from_numpy(seg)
-    st = time()
-    onehot_npy = convert_labelmap_to_one_hot(seg, np.arange(num_labels))
-    time_1 = time()
-    onehot_npy2 = convert_labelmap_to_one_hot(seg, np.arange(num_labels))
-    time_2 = time()
-    onehot_torch = convert_labelmap_to_one_hot(seg_torch, np.arange(num_labels))
-    time_torch = time()
-    onehot_torch2 = convert_labelmap_to_one_hot(seg_torch, np.arange(num_labels))
-    time_torch2 = time()
-    print(
-        f'np: {time_1 - st}, np2: {time_2 - time_1}, torch: {time_torch - time_2}, torch2: {time_torch2 - time_torch}')
-    onehot_torch = onehot_torch.numpy()
-    onehot_torch2 = onehot_torch2.numpy()
-    print(np.all(onehot_torch == onehot_npy))
-    print(np.all(onehot_torch2 == onehot_npy))
+# if __name__ == '__main__':
+#     # this code used to be able to differentiate variant 1 and 2 to measure time.
+#     num_labels = 7
+#     seg = np.random.randint(0, num_labels, size=(256, 256, 256), dtype=np.uint8)
+#     seg_torch = torch.from_numpy(seg)
+#     st = time()
+#     onehot_npy = convert_labelmap_to_one_hot(seg, np.arange(num_labels))
+#     time_1 = time()
+#     onehot_npy2 = convert_labelmap_to_one_hot(seg, np.arange(num_labels))
+#     time_2 = time()
+#     onehot_torch = convert_labelmap_to_one_hot(seg_torch, np.arange(num_labels))
+#     time_torch = time()
+#     onehot_torch2 = convert_labelmap_to_one_hot(seg_torch, np.arange(num_labels))
+#     time_torch2 = time()
+#     print(
+#         f'np: {time_1 - st}, np2: {time_2 - time_1}, torch: {time_torch - time_2}, torch2: {time_torch2 - time_torch}')
+#     onehot_torch = onehot_torch.numpy()
+#     onehot_torch2 = onehot_torch2.numpy()
+#     print(np.all(onehot_torch == onehot_npy))
+#     print(np.all(onehot_torch2 == onehot_npy))
